@@ -13,26 +13,17 @@ class BackpropLearner(SupervisedLearner):
     If the learning model you're using doesn't do as well as this one,
     it's time to find a new learning model.
     """
-    # class Node():
-    #     def __init__(self, ival):
-    #         self.weights = []
-    #         self.ival = ival
-    #         self.oval = 0
+    def __init__(self):
+        # Learning Rate
+        self.lr = 0.025
+        self.n_hidden = 1
+        self.momentum = 0.9
+        self.labels = []
+        self.velocity = []
+        self.network = []
+        self.dataset = []
+        self.usingMomentum = True
 
-    # class HiddenNode(Node):
-    #     def __init__(self):
-    #         pass
-    #     # def getOutput(self):
-    #         # Sigmond function here
-
-    # class InputNode(Node):
-    #      def __init__(self):
-    #         pass
-        
-    # class OutputNode(Node):
-    #     def __init__(self):
-    #         pass
-    
     # n_inputs: 1 for each col in dataset, #n_hidden: user-set variable
     # n_outputs: length of the set of possible outputs (2 for T/F)
     def initialize_network(self, n_inputs, n_hidden, n_outputs):
@@ -96,8 +87,16 @@ class BackpropLearner(SupervisedLearner):
                 inputs = [neuron['output'] for neuron in self.network[i - 1]]
             for neuron in self.network[i]:
                 for j in range(len(inputs)):
-                    neuron['weights'][j] += l_rate * neuron['delta'] * inputs[j]
-                neuron['weights'][-1] += l_rate * neuron['delta']
+                    if(self.usingMomentum == True):  # NEW METHOD OF UPDATING WEIGHTS WITH MOMENTUM
+                        self.velocity[j] = l_rate * neuron['delta'] * inputs[j] + self.momentum * self.velocity[j]
+                        neuron['weights'][j] += self.velocity[j]
+                    else:  # OLD METHOD OF UPDATING WEIGHTS
+                        neuron['weights'][j] += l_rate * neuron['delta'] * inputs[j]
+                if(self.usingMomentum==True):
+                    self.velocity[-1] =  l_rate * neuron['delta'] + self.momentum * self.velocity[j]
+                    neuron['weights'][-1] += self.velocity[-1]
+                else:
+                    neuron['weights'][-1] += l_rate * neuron['delta']
 
     # Train a network for a fixed number of epochs
     def train_network(self, train_set, l_rate, n_epoch, n_outputs):
@@ -116,16 +115,6 @@ class BackpropLearner(SupervisedLearner):
         outputs = self.forward_propagate(row)
         return outputs.index(max(outputs))
 
-    def __init__(self):
-        # Learning Rate
-        self.lr = 0.25
-        self.n_hidden = 2
-        self.labels = []
-        self.network = []
-        self.dataset = []
-
-        pass
-
     def train(self, features, labels):
         """
         :type features: Matrix
@@ -133,6 +122,7 @@ class BackpropLearner(SupervisedLearner):
         """
         seed(1)
         self.dataset = np.hstack((features.data, labels.data)).tolist()
+        self.velocity = [0] * (len(self.dataset[0])-1)
         # n_inputs: number of obs
         # n_outputs: set of possible values (2 for T/F, 0/1)
         n_inputs = len(self.dataset[0]) - 1
@@ -140,39 +130,14 @@ class BackpropLearner(SupervisedLearner):
         self.initialize_network(n_inputs, self.n_hidden, n_outputs)
         self.train_network(self.dataset, self.lr, 500, n_outputs)
 
-        # correctCount = 0
-        # for row in self.dataset:
-        #     prediction = self.predictVal(row)
-        #     if prediction == row[-1]:
-        #         correctCount+=1
-        #     print('Expected=%d, Got=%d' % (row[-1], prediction))
-        # accuracy = correctCount / len(self.dataset)
-        # print("Accuracy: %s" % accuracy)
-        
-        # printDataset()
-        # self.labels = []
-        # for i in range(labels.cols):
-        #     if labels.value_count(i) == 0:
-        #         self.labels += [labels.column_mean(i)]          # continuous
-        #     else:
-        #         self.labels += [labels.most_common_value(i)]    # nominal
-
-    def predict(self, features, labels):
+    # provides one observation, expects label to be updated with the predicted value
+    def predict(self, observation, label):
         """
-        :type features: [float]
-        :type labels: [float]
+        :type observation: [float]
+        :type label: [float]
         """
-        # print("LABELS")
-        # print(labels)
-        # currData = np.hstack((features, labels)).tolist()
-        # del labels[:]
-        # del self.labels[:]
-        # for row in currData:
-        #     prediction = self.predictVal(row)
-        #     self.labels.append(prediction)
-        # print("PREDICTIONS")
-        # print(self.labels)
-        del labels[:]
-        labels += self.labels
+        prediction = self.predictVal(observation)
+        del label[:]
+        label += [prediction]
 
    
