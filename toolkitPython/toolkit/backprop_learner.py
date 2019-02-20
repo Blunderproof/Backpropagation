@@ -1,10 +1,13 @@
 from .supervised_learner import SupervisedLearner
 import numpy as np
 from random import random
+from random import shuffle
 from random import seed
 from random import randrange
 from collections import OrderedDict
 import matplotlib.pyplot as plt
+import math
+
 
 class BackpropLearner(SupervisedLearner):
     """
@@ -15,22 +18,29 @@ class BackpropLearner(SupervisedLearner):
     """
     def __init__(self):
         # Learning Rate
-        self.lr = 0.025
+        self.lr = 0.1
         self.n_hidden = 1
         self.momentum = 0.9
         self.labels = []
         self.velocity = []
         self.network = []
         self.dataset = []
+        self.bssf = None
+        self.bssf_validation_mse = np.inf
         self.usingMomentum = True
 
-    # n_inputs: 1 for each col in dataset, #n_hidden: user-set variable
+    # n_inputs: 1 for each col in dataset, #n_hidden: user-set variable for num of nodes in the hidden layer
     # n_outputs: length of the set of possible outputs (2 for T/F)
     def initialize_network(self, n_inputs, n_hidden, n_outputs):
-        # TODO: Maybe change the final variable to a 1, as we've done in this class
-        hidden_layer = [{'weights':[random() for i in range(n_inputs + 1)]} for i in range(n_hidden)]
+        hidden_layer = [{'weights':[random() for i in range(n_inputs)]} for i in range(n_hidden)]
+        # Set the bias weight to 1
+        for node in hidden_layer:
+            node['weights'].append(1)
         self.network.append(hidden_layer)
-        output_layer = [{'weights':[random() for i in range(n_hidden + 1)]} for i in range(n_outputs)]
+        output_layer = [{'weights':[random() for i in range(n_hidden)]} for i in range(n_outputs)]
+        # Set the bias weight to 1
+        for node in output_layer:
+            node['weights'].append(1)
         self.network.append(output_layer)
 
     # Calculate neuron activation for an input
@@ -98,44 +108,107 @@ class BackpropLearner(SupervisedLearner):
                 else:
                     neuron['weights'][-1] += l_rate * neuron['delta']
 
-    # Train a network for a fixed number of epochs
-    def train_network(self, train_set, l_rate, n_epoch, n_outputs):
+    # Train a network, stop when n_epochs is exhausted or no improvement seen in test_set after 5 epochs.
+    def train_network(self, l_rate, n_epoch, n_outputs):
+        validation_mses = []
+        validation_accuracies = []
+        train_mses = []
+        epochs_since_improvement = 0
+
         for epoch in range(n_epoch):
-            sum_error = 0
-            for row in train_set:
+            train_sum_error = 0
+            validation_sum_error = 0
+            for row in self.train_set:
                 outputs = self.forward_propagate(row)
-                expected = [0 for i in range(n_outputs)]
+                expected = [0] * n_outputs
                 expected[int(row[-1])] = 1
-                sum_error += sum([(expected[i]-outputs[i])**2 for i in range(len(expected))])
+                train_sum_error += sum([(expected[i]-outputs[i])**2 for i in range(len(expected))])
                 self.backward_propagate_error(expected)
                 self.update_weights(row, l_rate)
-            print('>epoch=%d, lrate=%.3f, error=%.3f' % (epoch, l_rate, sum_error))
+            # Check the validation set's MSE
+            for row in self.validation_set:
+                outputs = self.forward_propagate(row)
+                expected = [0] * n_outputs
+                expected[int(row[-1])] = 1
+                validation_sum_error += sum([(expected[i]-outputs[i])**2 for i in range(len(expected))])
+            train_mse = train_sum_error / len(self.train_set)
+            validation_mse = validation_sum_error / len(self.validation_set)
+            validation_accuracy = self.getAccuracy(self.validation_set)
+            # check for new best solution so far (bssf)
+            if validation_mse < self.bssf_validation_mse:
+                epochs_since_improvement = 0
+                self.bssf_validation_mse = validation_mse
+                # deep copy the current best network
+                self.bssf = [row[:] for row in self.network]
+            else:
+                epochs_since_improvement +=1
+            train_mses.append(train_mse)
+            validation_mses.append(validation_mse)
+            validation_accuracies.append(validation_accuracy)
+            # check if no improvement reached among the last 5 most recent test_mse values 
+            if epochs_since_improvement >= 5:
+                self.plotQ2(train_mses, validation_mses, validation_accuracies)
+                print("No more VS MSE improvement!")
+                break
+            print('>epoch=%d, lrate=%.3f, error=%.3f' % (epoch, l_rate, validation_mse))
     
+    # plotting for question 3 of the report:
+    #   1) train_mse vals, test_mse vals along y axis
+    #       - epoch num along x axis
+    #   2) test set accuracy along y axis
+    #       - epoch num along x axis
+    def plotQ2(self, train_mses, test_mses, test_accuracies):
+        plt.figure(1)
+        plt.subplot(211)
+        plt.plot(train_mses, linestyle='--', marker='o', color='b', label="Train Set MSE")
+        plt.plot(test_mses, linestyle='--', marker='o', color='r', label="Validation Set MSE")
+        plt.xlabel("Epochs")
+        plt.ylabel("Mean Sum Error")
+        plt.legend()
+
+        plt.subplot(212)
+        plt.plot(test_accuracies, linestyle='--', marker='o', color='b', label="Validation Set Accuracy")
+        plt.xlabel("Epochs")
+        plt.ylabel("Classification Accuracy")
+        plt.legend()
+        plt.show()
+
+
+    def getAccuracy(self, dataset):
+        correct = 0
+        # find predictions
+        for obs in dataset:
+            prediction = self.predictVal(obs)
+            if prediction == obs[-1]:
+                correct += 1
+        return (correct / len(dataset))
+ 
     def predictVal(self, row):
         outputs = self.forward_propagate(row)
         return outputs.index(max(outputs))
 
     def train(self, features, labels):
-        """
-        :type features: Matrix
-        :type labels: Matrix
-        """
-        seed(1)
         self.dataset = np.hstack((features.data, labels.data)).tolist()
-        self.velocity = [0] * (len(self.dataset[0])-1)
+        shuffle(self.dataset)
+
+        # split dataset into training, validation and test sets
+        train_ratio, validation_ratio, test_ratio = .60, .15, .25
+        train_start_idx = math.floor((len(self.dataset)-1)*(train_ratio))
+        test_start_idx =  math.ceil((len(self.dataset)-1) - ((len(self.dataset)-1)*(1 - (train_ratio+validation_ratio))))
+        self.train_set, self.validation_set, self.test_set = self.dataset[train_start_idx:], self.dataset[train_start_idx:test_start_idx], self.dataset[test_start_idx:]
+        
         # n_inputs: number of obs
         # n_outputs: set of possible values (2 for T/F, 0/1)
-        n_inputs = len(self.dataset[0]) - 1
-        n_outputs = len(set([row[-1] for row in self.dataset]))
-        self.initialize_network(n_inputs, self.n_hidden, n_outputs)
-        self.train_network(self.dataset, self.lr, 500, n_outputs)
+        self.n_inputs = len(self.train_set[0]) - 1
+        self.n_hidden = self.n_inputs * 2
+        self.n_outputs = len(set([row[-1] for row in self.train_set]))
+        self.velocity = [0] * self.n_hidden
 
-    # provides one observation, expects label to be updated with the predicted value
+        self.initialize_network(self.n_inputs, self.n_hidden, self.n_outputs)
+        self.train_network(self.lr, 5000, self.n_outputs)
+
+    # provided one observation, reset the label to the predicted value
     def predict(self, observation, label):
-        """
-        :type observation: [float]
-        :type label: [float]
-        """
         prediction = self.predictVal(observation)
         del label[:]
         label += [prediction]
