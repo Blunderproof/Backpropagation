@@ -18,7 +18,7 @@ class BackpropLearner(SupervisedLearner):
     """
     def __init__(self):
         # Learning Rate
-        # self.lr = 0.1
+        self.lr = 0.25
         self.momentum = .9
         self.labels = []
         self.velocity = []
@@ -28,10 +28,14 @@ class BackpropLearner(SupervisedLearner):
         self.bssf_validation_mse = np.inf
         self.usingMomentum = True
 
+        # used for specific questions
         self.q3Metrics = []
+        self.q4Metrics = []
         self.currQuestion = 3
         self.lr_set = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1]
-        # self.lr_set = [0.01,0.1]
+        self.hn_set = [1, 2, 4, 8, 16, 32, 64]
+        self.momentum_set = [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
+
 
     # n_inputs: 1 for each col in dataset, #n_hidden: user-set variable for num of nodes in the hidden layer
     # n_outputs: length of the set of possible outputs (2 for T/F)
@@ -61,6 +65,7 @@ class BackpropLearner(SupervisedLearner):
     # Forward propagate input to a network output
     def forward_propagate(self, row):
         inputs = row
+        # while len(inputs) < len(self.network[0]['weights']):
         for layer in self.network:
             new_inputs = []
             for neuron in layer:
@@ -78,7 +83,7 @@ class BackpropLearner(SupervisedLearner):
     def backward_propagate_error(self, expected):
         for i in reversed(range(len(self.network))):
             layer = self.network[i]
-            errors = list()
+            errors = []
             if i != len(self.network)-1:
                 for j in range(len(layer)):
                     error = 0.0
@@ -111,8 +116,6 @@ class BackpropLearner(SupervisedLearner):
                     neuron['weights'][-1] += self.velocity[-1]
                 else:
                     neuron['weights'][-1] += l_rate * neuron['delta']
-                # print("VELOCITY")
-                # print(self.velocity)
 
     # Train a network, stop when n_epochs is exhausted or no improvement seen in test_set after 5 epochs.
     def train_network(self, l_rate, n_epoch, n_outputs):
@@ -141,7 +144,7 @@ class BackpropLearner(SupervisedLearner):
                 validation_accuracies.append(validation_accuracy)
 
             # check for new best solution so far (bssf)
-            if validation_mse < self.bssf_validation_mse and abs(validation_mse - self.bssf_validation_mse) > 0.005:
+            if validation_mse < self.bssf_validation_mse and abs(validation_mse - self.bssf_validation_mse) > 0.001:
                 epochs_since_improvement = 0
                 self.bssf_validation_mse = validation_mse
                 # deep copy the current best network
@@ -154,19 +157,19 @@ class BackpropLearner(SupervisedLearner):
             if epochs_since_improvement >= 5:
                 if self.currQuestion == 2:
                     self.plotQ2(train_mses, validation_mses, validation_accuracies)
-                if self.currQuestion == 3:
+                elif self.currQuestion == 3:
                     test_mse = self.getMSE(self.test_set)
                     self.q3Metrics.append({
                         "lr" : l_rate,
                         "epochs": epoch,
                         "xcoords" : [test_mse, train_mse, validation_mse],
                         "ycoords" : [l_rate] * 3})
-                    # self.q3Metrics.append( {
-                    #     "epoch count": epoch,
-                    #     "lr": l_rate,
-                    #     "train_mse" :train_mse, 
-                    #     "validation_mse": validation_mse,
-                    #     "test_mse": test_mse} )
+                elif self.currQuestion == 4:
+                    test_mse = self.getMSE(self.test_set)
+                    self.q4Metrics.append({
+                        "xcoords": [self.n_hidden] * 3,
+                        "ycoords": [test_mse, train_mse, validation_mse],
+                    })
                 print("No more VS MSE improvement!")
                 break
             
@@ -215,7 +218,6 @@ class BackpropLearner(SupervisedLearner):
         plt.ylabel("Learning Rate")
         plt.title("MSE by Learning Rate (Red: Test, Blue: Train, Yellow: Validation)")
         plt.show()
-        # ax = plt.subplot(111)
         
         for result in self.q3Metrics:
             plt.scatter(result['lr'], result['epochs'])
@@ -223,63 +225,9 @@ class BackpropLearner(SupervisedLearner):
         plt.ylabel("Number of epochs until convergence")
         plt.title("Learning Rate vs Learning Time (Epoch Count at convergence)")
         plt.show()
-        # for result in self.q3Metrics:
 
-        # plt.subplot(211)
-        # matplotlib.pyplot.scatter([1,2,3],[4,5,6],color=['red','green','blue'])
-        # plt.scatter(self.q3Metrics, self.lr_set)
-        # plt.plot(train_mses, linestyle='--', marker='o', color='b', label="Train Set MSE")
-        # plt.plot(test_mses, linestyle='--', marker='o', color='r', label="Validation Set MSE")
-        # plt.xlabel("MSE Value at stopping point")
-        # plt.ylabel("Learning Rate")
-        # plt.legend()
-
-        # plt.subplot(212)
-        # plt.plot(linestyle='--', marker='o', color='b', label="Validation Set Accuracy")
-        # plt.xlabel("Learning Rate")
-        # plt.ylabel("# of Epochs to reach best VS solution")
-        # plt.legend()
-        # plt.show()
-
-    # plotting for question 4 of the report:
-    #   1) train_mse val, validation_mse val, test_mse val at stopping point along y axis
-    #       - given number of hidden nodes used along x axis
-    # def plotQ4(self, train_mses, test_mses, validation_mse, test_accuracies):
-    #     plt.figure(1)
-    #     plt.subplot(211)
-    #     plt.plot(train_mses, linestyle='--', marker='o', color='b', label="Train Set MSE")
-    #     plt.plot(test_mses, linestyle='--', marker='o', color='r', label="Validation Set MSE")
-    #     plt.xlabel("Epochs")
-    #     plt.ylabel("Mean Sum Error")
-    #     plt.legend()
-
-    #     plt.subplot(212)
-    #     plt.plot(test_accuracies, linestyle='--', marker='o', color='b', label="Validation Set Accuracy")
-    #     plt.xlabel("Epochs")
-    #     plt.ylabel("Classification Accuracy")
-    #     plt.legend()
-    #     plt.show()
-
-    # plotting for question 5 of the report:
-    #   1) given momentum used along x axis
-    #       - number of epochs until convergence along y axis
-    # def plotQ5(self, train_mses, test_mses, validation_mse, test_accuracies):
-    #     plt.figure(1)
-    #     plt.subplot(211)
-    #     plt.plot(train_mses, linestyle='--', marker='o', color='b', label="Train Set MSE")
-    #     plt.plot(test_mses, linestyle='--', marker='o', color='r', label="Validation Set MSE")
-    #     plt.xlabel("Epochs")
-    #     plt.ylabel("Mean Sum Error")
-    #     plt.legend()
-
-    #     plt.subplot(212)
-    #     plt.plot(test_accuracies, linestyle='--', marker='o', color='b', label="Validation Set Accuracy")
-    #     plt.xlabel("Epochs")
-    #     plt.ylabel("Classification Accuracy")
-    #     plt.legend()
-    #     plt.show()
-
-
+    # plotting for question 4 and 5 of the report:
+    # DONE IN EXCEL SIMPLY
 
     def getAccuracy(self, dataset):
         correct = 0
@@ -292,33 +240,33 @@ class BackpropLearner(SupervisedLearner):
  
     def predictVal(self, row):
         outputs = self.forward_propagate(row)
-        # print(outputs)
-        # print(outputs.index(max(outputs)))
         return outputs.index(max(outputs))
 
     def train(self, features, labels):
         # Prep the vowels dataset
         self.dataset = np.hstack((features.data, labels.data))
-        # Remove the 'Test or Train' and Sex characteristics
-        self.dataset = np.delete(self.dataset, [0,1], 1)
-        # print(self.dataset)
+        # Remove the 'Test or Train' and Sex characteristics from the vowels dataset
+        self.dataset = np.delete(self.dataset, [0,1,2], 1).tolist()
         shuffle(self.dataset)
         
 
         # split dataset into training, validation and test sets
-        train_ratio, validation_ratio, test_ratio = .60, .15, .25
+        train_ratio, validation_ratio= .60, .15 # test_ratio = .25 = (1-rest)
         train_start_idx = math.floor((len(self.dataset)-1)*(train_ratio))
         test_start_idx =  math.ceil((len(self.dataset)-1) - ((len(self.dataset)-1)*(1 - (train_ratio+validation_ratio))))
         self.train_set, self.validation_set, self.test_set = self.dataset[train_start_idx:], self.dataset[train_start_idx:test_start_idx], self.dataset[test_start_idx:]
         
-        # n_inputs: number of obs
+        # n_inputs: number of obs * 2 by default
         # n_outputs: set of possible values (2 for T/F, 0/1)
         self.n_inputs = len(self.train_set[0]) - 1
         self.n_hidden = self.n_inputs * 2
         self.n_outputs = len(set([row[-1] for row in self.train_set]))
         self.velocity = [0] * self.n_hidden
 
-        if self.currQuestion == 3:
+        if self.currQuestion == 1 or self.currQuestion == 2:
+            self.initialize_network(self.n_inputs, self.n_hidden, self.n_outputs)
+            self.train_network(self.lr, 500, self.n_outputs)
+        elif self.currQuestion == 3:
             for lr in self.lr_set:
                 self.initialize_network(self.n_inputs, self.n_hidden, self.n_outputs)
                 self.train_network(lr, 500, self.n_outputs)
@@ -329,13 +277,58 @@ class BackpropLearner(SupervisedLearner):
                 self.bssf = None
                 self.bssf_validation_mse = np.inf
             self.plotQ3()
+        elif self.currQuestion == 4:
+            for hidden_count in self.hn_set:
+                # self.n_hidden = hidden_count
+                self.n_hidden = self.n_inputs * 2
+                self.velocity = [0] * self.n_hidden
+
+                self.initialize_network(self.n_inputs, self.n_hidden, self.n_outputs)
+                self.train_network(self.lr, 500, self.n_outputs)
+                print(self.n_hidden)
+
+                # Reset features for next iteration if not last
+                if hidden_count != self.hn_set[-1]:
+                    self.velocity = [0] * self.n_hidden
+                    self.network = []
+                    self.bssf = None
+                    self.bssf_validation_mse = np.inf
+            # self.plotQ4(), just do it in excel
+        elif self.currQuestion == 5:
+            for momentum_val in self.momentum_set:
+                self.momentum = momentum_val
+                print(self.momentum)
+                self.initialize_network(self.n_inputs, self.n_hidden, self.n_outputs)
+                self.train_network(self.lr, 500, self.n_outputs)
+                print(self.n_hidden)
+
+                # Reset features for next iteration if not last
+                if momentum_val != self.momentum_set[-1]:
+                    self.velocity = [0] * self.n_hidden
+                    self.network = []
+                    self.bssf = None
+                    self.bssf_validation_mse = np.inf
+        elif self.currQuestion == 6:
+            core_dataset = np.array(self.dataset)
+            for col in range(9):
+                print("Removing Col: %s" % col)
+                self.dataset = np.delete(self.dataset, col, 1).tolist()
+                self.initialize_network(self.n_inputs, self.n_hidden, self.n_outputs)
+                self.train_network(self.lr, 500, self.n_outputs)
+
+                print(self.getAccuracy(self.dataset))
+                # Reset features for next iteration
+                if col != 10:
+                    self.network = []
+                    self.bssf = None
+                    self.bssf_validation_mse = np.inf
+                    self.dataset = core_dataset
         else:
-            self.initialize_network(self.n_inputs, self.n_hidden, self.n_outputs)
-            self.train_network(self.lr, 500, self.n_outputs)
+            print("Enter a valid question number, refer to the documentation")
 
     # provided one observation, reset the label to the predicted value
     def predict(self, observation, label):
-        # Remove the 'Test or Train' and Sex characteristics to conform to model
+        # Remove the 'Test or Train' and Sex characteristics to conform to model for vowels dataset
         observation = observation[2:]
         prediction = self.predictVal(observation)
         del label[:]
